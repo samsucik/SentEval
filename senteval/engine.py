@@ -53,10 +53,10 @@ class SE(object):
                            'BigramShift', 'Tense', 'SubjNumber', 'ObjNumber',
                            'OddManOut', 'CoordinationInversion']
 
-    def eval(self, name):
+    def eval(self, name, dev_mode=False):
         # evaluate on evaluation [name], either takes string or list of strings
         if (isinstance(name, list)):
-            self.results = {x: self.eval(x) for x in name}
+            self.results = {x: self.eval(x, dev_mode=dev_mode) for x in name}
             return self.results
 
         tpath = self.params.task_path
@@ -95,25 +95,25 @@ class SE(object):
 
         # Probing Tasks
         elif name == 'Length':
-                self.evaluation = LengthEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = LengthEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
         elif name == 'WordContent':
-                self.evaluation = WordContentEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = WordContentEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
         elif name == 'Depth':
-                self.evaluation = DepthEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = DepthEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
         elif name == 'TopConstituents':
-                self.evaluation = TopConstituentsEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = TopConstituentsEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
         elif name == 'BigramShift':
-                self.evaluation = BigramShiftEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = BigramShiftEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
         elif name == 'Tense':
-                self.evaluation = TenseEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = TenseEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
         elif name == 'SubjNumber':
-                self.evaluation = SubjNumberEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = SubjNumberEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
         elif name == 'ObjNumber':
-                self.evaluation = ObjNumberEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = ObjNumberEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
         elif name == 'OddManOut':
-                self.evaluation = OddManOutEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = OddManOutEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
         elif name == 'CoordinationInversion':
-                self.evaluation = CoordinationInversionEval(tpath + '/probing', seed=self.params.seed)
+                self.evaluation = CoordinationInversionEval(tpath + '/probing', seed=self.params.seed, dev_mode=dev_mode)
 
         self.params.current_task = name
         self.evaluation.do_prepare(self.params, self.prepare)

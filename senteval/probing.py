@@ -15,15 +15,17 @@ import os
 import io
 import copy
 import logging
+import pickle
 import numpy as np
 
 from senteval.tools.validation import SplitClassifier
 
 
 class PROBINGEval(object):
-    def __init__(self, task, task_path, seed=1111):
+    def __init__(self, task, task_path, seed=1111, dev_mode=False):
         self.seed = seed
         self.task = task
+        self.dev_mode = dev_mode
         logging.debug('***** (Probing) Transfer task : %s classification *****', self.task.upper())
         self.task_data = {'train': {'X': [], 'y': []},
                           'dev': {'X': [], 'y': []},
@@ -46,6 +48,15 @@ class PROBINGEval(object):
                 self.task_data[self.tok2split[line[0]]]['X'].append(line[-1].split())
                 self.task_data[self.tok2split[line[0]]]['y'].append(line[1])
 
+        if self.dev_mode:
+            logging.info("DEV mode, so cutting the number of samples down to just a few.")
+            self.task_data['train']['X'] = self.task_data['train']['X'][:16]
+            self.task_data['train']['y'] = self.task_data['train']['y'][:16]
+            self.task_data['dev']['X'] = self.task_data['dev']['X'][:8]
+            self.task_data['dev']['y'] = self.task_data['dev']['y'][:8]
+            self.task_data['test']['X'] = self.task_data['test']['X'][:8]
+            self.task_data['test']['y'] = self.task_data['test']['y'][:8]
+
         labels = sorted(np.unique(self.task_data['train']['y']))
         self.tok2label = dict(zip(labels, range(len(labels))))
         self.nclasses = len(self.tok2label)
@@ -57,22 +68,30 @@ class PROBINGEval(object):
     def run(self, params, batcher):
         task_embed = {'train': {}, 'dev': {}, 'test': {}}
         bsize = params.batch_size
-        logging.info('Computing embeddings for train/dev/test')
-        for key in self.task_data:
-            # Sort to reduce padding
-            sorted_data = sorted(zip(self.task_data[key]['X'],
-                                     self.task_data[key]['y']),
-                                 key=lambda z: (len(z[0]), z[1]))
-            self.task_data[key]['X'], self.task_data[key]['y'] = map(list, zip(*sorted_data))
+        cached_file_name = params.cached_embeddings_file + "-{}".format(self.task)
+        if not os.path.isfile(cached_file_name):
+            logging.info('Computing embeddings for train/dev/test')
+            for key in self.task_data:
+                # Sort to reduce padding
+                sorted_data = sorted(zip(self.task_data[key]['X'],
+                                         self.task_data[key]['y']),
+                                     key=lambda z: (len(z[0]), z[1]))
+                self.task_data[key]['X'], self.task_data[key]['y'] = map(list, zip(*sorted_data))
 
-            task_embed[key]['X'] = []
-            for ii in range(0, len(self.task_data[key]['y']), bsize):
-                batch = self.task_data[key]['X'][ii:ii + bsize]
-                embeddings = batcher(params, batch)
-                task_embed[key]['X'].append(embeddings)
-            task_embed[key]['X'] = np.vstack(task_embed[key]['X'])
-            task_embed[key]['y'] = np.array(self.task_data[key]['y'])
-        logging.info('Computed embeddings')
+                task_embed[key]['X'] = []
+                for ii in range(0, len(self.task_data[key]['y']), bsize):
+                    batch = self.task_data[key]['X'][ii:ii + bsize]
+                    embeddings = batcher(params, batch)
+                    task_embed[key]['X'].append(embeddings)
+                task_embed[key]['X'] = np.vstack(task_embed[key]['X'])
+                task_embed[key]['y'] = np.array(self.task_data[key]['y'])
+            with open(cached_file_name, "wb") as f:
+                pickle.dump(task_embed, f, protocol=pickle.HIGHEST_PROTOCOL)
+            logging.info('Computed embeddings')
+        else:
+            logging.info("Loading computed embeddings from {}.".format(cached_file_name))
+            with open(cached_file_name, "rb") as f:
+                task_embed = pickle.load(f)
 
         config_classifier = {'nclasses': self.nclasses, 'seed': self.seed,
                              'usepytorch': params.usepytorch,
@@ -102,37 +121,37 @@ class PROBINGEval(object):
 Surface Information
 """
 class LengthEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'sentence_length.txt')
         # labels: bins
-        PROBINGEval.__init__(self, 'Length', task_path, seed)
+        PROBINGEval.__init__(self, 'Length', task_path, seed, dev_mode=dev_mode)
 
 class WordContentEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'word_content.txt')
         # labels: 200 target words
-        PROBINGEval.__init__(self, 'WordContent', task_path, seed)
+        PROBINGEval.__init__(self, 'WordContent', task_path, seed, dev_mode=dev_mode)
 
 """
 Latent Structural Information
 """
 class DepthEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'tree_depth.txt')
         # labels: bins
-        PROBINGEval.__init__(self, 'Depth', task_path, seed)
+        PROBINGEval.__init__(self, 'Depth', task_path, seed, dev_mode=dev_mode)
 
 class TopConstituentsEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'top_constituents.txt')
         # labels: 'PP_NP_VP_.' .. (20 classes)
-        PROBINGEval.__init__(self, 'TopConstituents', task_path, seed)
+        PROBINGEval.__init__(self, 'TopConstituents', task_path, seed, dev_mode=dev_mode)
 
 class BigramShiftEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'bigram_shift.txt')
         # labels: 0 or 1
-        PROBINGEval.__init__(self, 'BigramShift', task_path, seed)
+        PROBINGEval.__init__(self, 'BigramShift', task_path, seed, dev_mode=dev_mode)
 
 # TODO: Voice?
 
@@ -141,31 +160,31 @@ Latent Semantic Information
 """
 
 class TenseEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'past_present.txt')
         # labels: 'PRES', 'PAST'
-        PROBINGEval.__init__(self, 'Tense', task_path, seed)
+        PROBINGEval.__init__(self, 'Tense', task_path, seed, dev_mode=dev_mode)
 
 class SubjNumberEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'subj_number.txt')
         # labels: 'NN', 'NNS'
-        PROBINGEval.__init__(self, 'SubjNumber', task_path, seed)
+        PROBINGEval.__init__(self, 'SubjNumber', task_path, seed, dev_mode=dev_mode)
 
 class ObjNumberEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'obj_number.txt')
         # labels: 'NN', 'NNS'
-        PROBINGEval.__init__(self, 'ObjNumber', task_path, seed)
+        PROBINGEval.__init__(self, 'ObjNumber', task_path, seed, dev_mode=dev_mode)
 
 class OddManOutEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'odd_man_out.txt')
         # labels: 'O', 'C'
-        PROBINGEval.__init__(self, 'OddManOut', task_path, seed)
+        PROBINGEval.__init__(self, 'OddManOut', task_path, seed, dev_mode=dev_mode)
 
 class CoordinationInversionEval(PROBINGEval):
-    def __init__(self, task_path, seed=1111):
+    def __init__(self, task_path, seed=1111, dev_mode=False):
         task_path = os.path.join(task_path, 'coordination_inversion.txt')
         # labels: 'O', 'I'
-        PROBINGEval.__init__(self, 'CoordinationInversion', task_path, seed)
+        PROBINGEval.__init__(self, 'CoordinationInversion', task_path, seed, dev_mode=dev_mode)
