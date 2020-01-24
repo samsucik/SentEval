@@ -17,6 +17,7 @@ import copy
 import logging
 import pickle
 import numpy as np
+from tqdm import tqdm
 
 from senteval.tools.validation import SplitClassifier
 
@@ -79,7 +80,7 @@ class PROBINGEval(object):
                 self.task_data[key]['X'], self.task_data[key]['y'] = map(list, zip(*sorted_data))
 
                 task_embed[key]['X'] = []
-                for ii in range(0, len(self.task_data[key]['y']), bsize):
+                for ii in tqdm(range(0, len(self.task_data[key]['y']), bsize)):
                     batch = self.task_data[key]['X'][ii:ii + bsize]
                     embeddings = batcher(params, batch)
                     task_embed[key]['X'].append(embeddings)
