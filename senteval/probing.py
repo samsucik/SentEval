@@ -21,6 +21,8 @@ from tqdm import tqdm
 
 from senteval.tools.validation import SplitClassifier
 
+def select(arr, indices):
+    return [arr[i] for i in indices]
 
 class PROBINGEval(object):
     def __init__(self, task, task_path, seed=1111, dev_mode=False):
@@ -49,18 +51,24 @@ class PROBINGEval(object):
                 self.task_data[self.tok2split[line[0]]]['X'].append(line[-1].split())
                 self.task_data[self.tok2split[line[0]]]['y'].append(line[1])
 
-        if self.dev_mode:
-            logging.info("DEV mode, so cutting the number of samples down to just a few.")
-            self.task_data['train']['X'] = self.task_data['train']['X'][:16]
-            self.task_data['train']['y'] = self.task_data['train']['y'][:16]
-            self.task_data['dev']['X'] = self.task_data['dev']['X'][:8]
-            self.task_data['dev']['y'] = self.task_data['dev']['y'][:8]
-            self.task_data['test']['X'] = self.task_data['test']['X'][:8]
-            self.task_data['test']['y'] = self.task_data['test']['y'][:8]
-
         labels = sorted(np.unique(self.task_data['train']['y']))
         self.tok2label = dict(zip(labels, range(len(labels))))
         self.nclasses = len(self.tok2label)
+
+        if self.dev_mode:
+            logging.info("DEV mode, so cutting the number of samples down to just a few.")
+            N_tr = 600
+            N_te = 100
+            indices_tr = np.random.choice(len(self.task_data['train']['y']), size=N_tr, replace=False)
+            indices_te = np.random.choice(len(self.task_data['test']['y']), size=N_te, replace=False)
+            self.task_data['train']['X'] = select(self.task_data['train']['X'], indices=indices_tr)
+            self.task_data['train']['y'] = select(self.task_data['train']['y'], indices=indices_tr)
+
+            self.task_data['dev']['X'] = select(self.task_data['dev']['X'], indices=indices_te)
+            self.task_data['dev']['y'] = select(self.task_data['dev']['y'], indices=indices_te)
+            
+            self.task_data['test']['X'] = select(self.task_data['test']['X'], indices=indices_te)
+            self.task_data['test']['y'] = select(self.task_data['test']['y'], indices=indices_te)
 
         for split in self.task_data:
             for i, y in enumerate(self.task_data[split]['y']):
@@ -69,7 +77,7 @@ class PROBINGEval(object):
     def run(self, params, batcher):
         task_embed = {'train': {}, 'dev': {}, 'test': {}}
         bsize = params.batch_size
-        cached_file_name = params.cached_embeddings_file + "-{}".format(self.task)
+        cached_file_name = params.cached_embeddings_file + "_{}".format(self.task)
         if not os.path.isfile(cached_file_name):
             logging.info('Computing embeddings for train/dev/test')
             for key in self.task_data:
@@ -82,8 +90,8 @@ class PROBINGEval(object):
                 task_embed[key]['X'] = []
                 for ii in tqdm(range(0, len(self.task_data[key]['y']), bsize)):
                     batch = self.task_data[key]['X'][ii:ii + bsize]
-                    # embeddings = batcher(params, batch)
-                    embeddings = np.ones((bsize, 1024*512), dtype="float32")
+                    embeddings = batcher(params, batch)
+                    # embeddings = np.ones((bsize, 1024*512), dtype="float32")
                     task_embed[key]['X'].append(embeddings)
                 task_embed[key]['X'] = np.vstack(task_embed[key]['X'])
                 task_embed[key]['y'] = np.array(self.task_data[key]['y'])
